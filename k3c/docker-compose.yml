@@ -1,0 +1,190 @@
+services:
+  broker:
+    image: apache/kafka:3.8.0
+    hostname: broker
+    user: "0:0"
+    container_name: broker
+    ports:
+      - 9092:9092
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: [ "CMD","/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kafkasetup:
+    depends_on:
+      - broker
+    image: apache/kafka:3.8.0
+    restart: on-failure
+    # create topics: pricing-rules, context-data, aggregated, aggregated-table-friendly, metrics-raw-telegraf-env
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:29092 --create --topic pricing-rules --partitions 1 --replication-factor 1 --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:29092 --create --topic context-data --partitions 1 --replication-factor 1 --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:29092 --create --topic aggregated --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:29092 --create --topic aggregated-table-friendly --partitions 1 --replication-factor 1 --config retention.ms=-1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:29092 --create --topic metrics-raw-telegraf-env --partitions 1 --replication-factor 1 --config retention.ms=-1
+        echo "Kafka topics created successfully."
+
+  kcc:
+    depends_on:
+      - broker
+      - schema-registry
+    image: work/kafka-cost-control:rest
+    ports:
+      - 8089:8080
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: broker:29092
+      KAFKA_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CC_OLAP_ENABLED: "false"
+      QUARKUS_HTTP_PORT: 8080
+
+  kccsetup:
+    depends_on:
+      - kcc
+    image: spoud/kafka-cost-control:0.4.1
+    restart: on-failure
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        echo "Setting up Kafka Cost Control..."
+        # Send a REST request to create a context (basic auth: admin:admin)
+        curl -X POST http://kcc:8080/api/context-data \
+          -H "Content-Type: application/json" \
+          -u "admin:admin" \
+          -d '{"id": "323b603d-5b5f-48d2-84fc-4e784e942289", "entityType": "TOPIC", "regex": "(.+)", "context": [{"key": "application", "value": "$1"}, {"key": "psp_element", "value": "B109968_LAGO D&A | Team $1 - $1@mgb.ch |"}]}'
+
+  schema-registry:
+    depends_on:
+      - broker
+    restart: on-failure
+    image: ghcr.io/aiven-open/karapace:6.1.2
+    entrypoint:
+      - python3
+      - -m
+      - karapace
+    environment:
+      KARAPACE_BOOTSTRAP_URI: "broker:29092"
+      KARAPACE_KARAPACE_REGISTRY: true
+      KARAPACE_KARAPACE_REST: false
+      KARAPACE_ADVERTISED_HOSTNAME: schema-registry
+      KARAPACE_ADVERTISED_PROTOCOL: http
+      KARAPACE_PORT: 8081
+      KARAPACE_HOST: 0.0.0.0
+      KARAPACE_CLIENT_ID: schema-registry-0
+      KARAPACE_GROUP_ID: schema-registry
+      KARAPACE_MASTER_ELECTION_STRATEGY: highest
+      KARAPACE_MASTER_ELIGIBILITY: true
+      KARAPACE_TOPIC_NAME: _schemas
+      KARAPACE_LOG_LEVEL: INFO
+      KARAPACE_COMPATIBILITY: FULL
+      KARAPACE_KAFKA_SCHEMA_READER_STRICT_MODE: false
+      KARAPACE_KAFKA_RETRIABLE_ERRORS_SILENCED: true
+    ports:
+      - 8084:8081
+
+  postgresql:
+    profiles:
+      - all
+      - dependencies
+      - essential
+    env_file:
+      - .env.local
+    environment:
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
+      POSTGRES_USER: ${PG_USER:-authentik}
+    ports:
+      - '5432:5432'
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      test:
+        - CMD-SHELL
+        - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
+      timeout: 5s
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    volumes:
+      - ./common/authentik/authentik.sql:/docker-entrypoint-initdb.d/authentik.sql:ro
+      - database:/var/lib/postgresql/data
+  # This sets up an Authentik server with a preconfigured admin user:
+  # - Username: `test@example.com`
+  # - Password: `hunter2`
+  authentik-server:
+    profiles:
+      - all
+      - dependencies
+    command: server
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.10.3}
+    ports:
+      - ${COMPOSE_PORT_HTTP:-9000}:9000
+      - ${COMPOSE_PORT_HTTPS:-9443}:9443
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'curl -f http://localhost:9000/-/health/ready/ || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  authentik-worker:
+    profiles:
+      - all
+      - dependencies
+    command: worker
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.10.3}
+    restart: unless-stopped
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+volumes:
+  database:
+  kafka-data:

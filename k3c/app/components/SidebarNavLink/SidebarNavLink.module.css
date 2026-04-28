@@ -1,0 +1,9 @@
+.root {
+  border-radius: var(--mantine-radius-sm);
+
+  &[data-active] {
+    font-weight: 700;
+    background-color: var(--mantine-primary-color-light);
+    color: var(--mantine-primary-color-light-color);
+  }
+}
