@@ -7,3 +7,5 @@ AGENTS.md
 # React Router
 /.react-router/
 /build/
+
+playwright-report/
