@@ -9,6 +9,7 @@ import {
   Stack,
   Container,
   Divider,
+  Badge,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -24,6 +25,8 @@ import {
   IconChartBar,
   IconChartArea,
   IconChartAreaLineFilled,
+  IconSettingsCode,
+  IconAlertTriangle,
 } from '@tabler/icons-react';
 import { Outlet } from 'react-router';
 import { AuthButtons } from '~/auth/AuthButtons';
@@ -97,7 +100,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         display={'flex'}
       >
         <SidebarNavLink
-          to="/dashboard"
+          to="/"
           label="Dashboard"
           icon={<IconChartBar size={16} />}
         />
@@ -111,11 +114,26 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
           label="Metrics"
           icon={<IconDashboard size={16} />}
         />
+        <SidebarNavLink
+          to="/problems"
+          label="Problems"
+          rightSection={
+            <Badge variant={'light'} color={'green'}>
+              0
+            </Badge>
+          }
+          icon={<IconAlertTriangle size={16} />}
+        />
         <Divider variant={'dashed'} label={'Advanced Settings'} mt={'auto'} />
         <SidebarNavLink
           to="/contexts"
           label="Contexts"
           icon={<IconList size={16} />}
+        />
+        <SidebarNavLink
+          to="/aggregator-setup"
+          label="Aggregator Setup"
+          icon={<IconSettingsCode size={16} />}
         />
       </AppShell.Navbar>
 

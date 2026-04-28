@@ -1,4 +1,5 @@
-import { pgTable, text } from 'drizzle-orm/pg-core';
+import { uuid, pgTable, text, date, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const metricsTable = pgTable('metrics', {
   id: text('technical_name').primaryKey(),

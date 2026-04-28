@@ -31,3 +31,38 @@ export interface RichMetric {
    */
   lastSeen?: Date;
 }
+
+/**
+ * Represents an ownership rule that maps resources to an application.
+ */
+export interface OwnershipRule {
+  /**
+   * Unique identifier for the ownership rule.
+   */
+  id: string;
+
+  /**
+   * Human-readable name for the rule.
+   */
+  name: string;
+
+  /**
+   * Regex pattern to match against resources or principals.
+   */
+  regex: string;
+
+  /**
+   * The application name this rule is associated with.
+   */
+  application: string;
+
+  /**
+   * The entity type (TOPIC or PRINCIPAL) this rule applies to.
+   */
+  entityType: 'TOPIC' | 'PRINCIPAL';
+
+  /**
+   * The date the rule was created.
+   */
+  createdAt?: string;
+}

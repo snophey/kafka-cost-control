@@ -527,9 +527,9 @@ export default function ContextsPage({
             New Context
           </Button>
         }
-        description={
-          'Context objects assign metadata to different metrics. For example, a context may contain information about the owner of a topic or the related cost-center information. When a metric for a topic or a user comes in, all contexts whose regex matches the topic or principal will be applied.'
-        }
+        description={`Context objects assign metadata to different metrics. For example, a context may contain information about the owner of a topic or the related cost-center information. When a metric for a topic or a user comes in, all contexts whose regex matches the topic or principal will be applied.
+          Contexts are a low-level Cost Control construct. If you plan to use k3c for cost analysis, you prefer to use the "Applications" feature instead of working with contexts directly.
+          `}
       />
 
       <Form method="post">
