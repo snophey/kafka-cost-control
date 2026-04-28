@@ -24,6 +24,13 @@ export const configSchema = z.object({
   costControlUrl: z.string().url(),
   costControlBasicAuthUser: z.string().min(1),
   costControlBasicAuthPassword: z.string().min(1),
+  postgresHost: z.string().optional(),
+  postgresPort: z.coerce.number().optional(),
+  postgresUseSsl: z.boolean().default(false),
+  postgresUser: z.string().optional(),
+  postgresPassword: z.string().optional(),
+  postgresDatabase: z.string().optional(),
+  duckDbPath: z.string().default('/tmp/k3c.db'),
 });
 
 /**
@@ -54,6 +61,13 @@ function parseConfig(env) {
     costControlUrl: env.COST_CONTROL_URL,
     costControlBasicAuthUser: env.COST_CONTROL_BASIC_AUTH_USER,
     costControlBasicAuthPassword: env.COST_CONTROL_BASIC_AUTH_PASSWORD,
+    postgresHost: env.POSTGRES_HOST,
+    postgresPort: env.POSTGRES_PORT,
+    postgresUseSsl: env.POSTGRES_USE_SSL === 'true',
+    postgresUser: env.POSTGRES_USER,
+    postgresPassword: env.POSTGRES_PASSWORD,
+    postgresDatabase: env.POSTGRES_DATABASE,
+    duckDbPath: env.DUCKDB_PATH,
   };
 
   return configSchema.parse(rawConfig);
@@ -69,6 +83,7 @@ function logCensoredConfig(validatedConfig) {
     sessionSecret: '[REDACTED]',
     oauthClientSecret: '[REDACTED]',
     costControlBasicAuthPassword: '[REDACTED]',
+    postgresPassword: '[REDACTED]',
   };
 
   console.log(
